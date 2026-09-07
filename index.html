@@ -269,22 +269,39 @@
   .item-link { font-size: 13px; color: var(--text-faint); text-decoration: none; margin-right: 14px; }
   .item-link:hover { color: var(--amber); }
 
-  .show-tweet-btn {
-    font-size: 13px;
-    color: var(--text-faint);
-    background: none;
-    border: none;
-    padding: 0;
-    cursor: pointer;
-    font-family: inherit;
-    text-decoration: underline;
-    text-decoration-color: var(--line);
-    text-underline-offset: 2px;
+  .media-grid {
+    display: grid;
+    gap: 4px;
+    margin: 2px 0 10px;
+    border-radius: 8px;
+    overflow: hidden;
+    max-width: 480px;
   }
-  .show-tweet-btn:hover { color: var(--amber); text-decoration-color: var(--amber); }
+  .media-item {
+    position: relative;
+    display: block;
+    overflow: hidden;
+    background: var(--line-soft);
+    aspect-ratio: 16 / 10;
+  }
+  .media-item img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .play-badge {
+    position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+    width: 38px; height: 38px; border-radius: 50%;
+    background: rgba(0, 0, 0, 0.55); color: #fff;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 13px; pointer-events: none;
+  }
 
-  .embed-wrap { margin-top: 12px; max-width: 480px; }
-  .embed-wrap .embed-loading { font-size: 12px; color: var(--text-faint); padding: 10px 0; }
+  .img-toggle-row {
+    margin-top: 12px;
+    font-size: 12.5px;
+    color: var(--text-faint);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .img-toggle-row input { accent-color: var(--amber); }
 
   .loading-row { text-align: center; padding: 30px 0; color: var(--text-faint); font-size: 13px; display: none; }
 
@@ -337,7 +354,10 @@
         <button id="order-toggle" class="chip-btn" type="button">Oldest first ↑</button>
         <button id="change-file-btn" class="chip-btn" type="button">Use a different file</button>
       </div>
-      <p class="img-note">Images aren't included in the export. Click "Show tweet" on any item to load X's own embed with the image inline — needs an internet connection.</p>
+      <label class="img-toggle-row">
+        <input type="checkbox" id="img-toggle" checked>
+        Load attached images automatically as you scroll (needs internet)
+      </label>
     </header>
 
     <div id="results"></div>
@@ -548,51 +568,102 @@
     return el;
   }
 
-  // On-demand official X embed (avoids CORS issues with direct API calls)
-  var widgetsScriptLoaded = false;
-  var widgetsScriptLoading = null;
-  function ensureWidgetsScript() {
-    if (widgetsScriptLoaded) return Promise.resolve();
-    if (widgetsScriptLoading) return widgetsScriptLoading;
-    widgetsScriptLoading = new Promise(function (resolve, reject) {
-      var s = document.createElement('script');
-      s.src = 'https://platform.twitter.com/widgets.js';
-      s.async = true;
-      s.charset = 'utf-8';
-      s.onload = function () { widgetsScriptLoaded = true; resolve(); };
-      s.onerror = function () { reject(new Error('failed to load widgets.js')); };
-      document.head.appendChild(s);
-    });
-    return widgetsScriptLoading;
-  }
-  function toggleEmbed(btn, row) {
-    var existing = row.querySelector('.embed-wrap');
-    if (existing) {
-      existing.remove();
-      btn.textContent = 'Show tweet ↴';
-      return;
-    }
-    btn.textContent = 'Hide tweet ↑';
-    var wrap = document.createElement('div');
-    wrap.className = 'embed-wrap';
-    wrap.innerHTML = '<div class="embed-loading">loading tweet…</div>';
-    row.appendChild(wrap);
+  // On-demand images via a small Cloudflare Worker proxy (bypasses browser CORS,
+  // since the worker calls X's syndication endpoint server-side).
+  // >>> REPLACE THIS with your deployed worker URL <<<
+  var WORKER_URL = 'https://late-block-5069.alexsefro6.workers.dev';
 
-    var tweetUrl = row.dataset.tweetUrl;
-    ensureWidgetsScript().then(function () {
-      wrap.innerHTML = '';
-      var blockquote = document.createElement('blockquote');
-      blockquote.className = 'twitter-tweet';
-      blockquote.setAttribute('data-dnt', 'true');
-      blockquote.setAttribute('data-theme', 'dark');
+  var mediaCache = {};
+
+  function fetchMedia(id) {
+    if (mediaCache.hasOwnProperty(id)) return Promise.resolve(mediaCache[id]);
+    var url = WORKER_URL + '?id=' + encodeURIComponent(id);
+    return fetch(url).then(function (r) {
+      if (!r.ok) throw new Error('bad status');
+      return r.json();
+    }).then(function (data) {
+      var photos = null;
+      if (data && Array.isArray(data.photos) && data.photos.length) {
+        photos = data.photos.map(function (p) { return { url: p.url, isVideo: false }; });
+      } else if (data && data.video && data.video.poster) {
+        photos = [{ url: data.video.poster, isVideo: true }];
+      } else if (data && Array.isArray(data.mediaDetails) && data.mediaDetails.length) {
+        photos = data.mediaDetails
+          .filter(function (m) { return m.type === 'photo'; })
+          .map(function (m) { return { url: m.media_url_https, isVideo: false }; });
+        if (!photos.length) photos = null;
+      }
+      mediaCache[id] = photos;
+      return photos;
+    }).catch(function () {
+      mediaCache[id] = null;
+      return null;
+    });
+  }
+
+  var MAX_CONCURRENT = 5;
+  var activeFetches = 0;
+  var fetchQueue = [];
+  function queueMediaFetch(id, cb) {
+    fetchQueue.push({ id: id, cb: cb });
+    pumpQueue();
+  }
+  function pumpQueue() {
+    while (activeFetches < MAX_CONCURRENT && fetchQueue.length) {
+      let task = fetchQueue.shift();
+      activeFetches++;
+      fetchMedia(task.id).then(function (photos) {
+        activeFetches--;
+        task.cb(photos);
+        pumpQueue();
+      });
+    }
+  }
+
+  function renderMediaIntoRow(row, photos, tweetUrl) {
+    if (!photos || !photos.length || !document.body.contains(row)) return;
+    var grid = document.createElement('div');
+    grid.className = 'media-grid';
+    var count = Math.min(photos.length, 4);
+    grid.style.gridTemplateColumns = count === 1 ? '1fr' : '1fr 1fr';
+    photos.slice(0, 4).forEach(function (p) {
       var a = document.createElement('a');
       a.href = tweetUrl;
-      blockquote.appendChild(a);
-      wrap.appendChild(blockquote);
-      if (window.twttr && window.twttr.widgets) window.twttr.widgets.load(wrap);
-    }).catch(function () {
-      wrap.innerHTML = '<div class="embed-loading">Couldn\'t load X\'s embed script — check your connection.</div>';
+      a.target = '_blank';
+      a.rel = 'noopener noreferrer';
+      a.className = 'media-item';
+      var img = document.createElement('img');
+      img.src = p.url;
+      img.loading = 'lazy';
+      img.alt = '';
+      a.appendChild(img);
+      if (p.isVideo) {
+        var badge = document.createElement('span');
+        badge.className = 'play-badge';
+        badge.textContent = '▶';
+        a.appendChild(badge);
+      }
+      grid.appendChild(a);
     });
+    var link = row.querySelector('.item-link');
+    row.insertBefore(grid, link);
+  }
+
+  var imgToggle = document.getElementById('img-toggle');
+  var imgObserver = null;
+  function initImgObserver() {
+    if (imgObserver) imgObserver.disconnect();
+    imgObserver = new IntersectionObserver(function (entries) {
+      entries.forEach(function (entry) {
+        if (!entry.isIntersecting) return;
+        var row = entry.target;
+        imgObserver.unobserve(row);
+        if (!imgToggle.checked) return;
+        queueMediaFetch(row.dataset.tweetId, function (photos) {
+          renderMediaIntoRow(row, photos, row.dataset.tweetUrl);
+        });
+      });
+    }, { rootMargin: '600px 0px' });
   }
 
   function renderBatch() {
@@ -617,13 +688,10 @@
       row.innerHTML =
         '<div class="item-date">' + formatDate(item.ts) + '</div>' +
         '<div class="item-text">' + withHighlight + '</div>' +
-        '<a class="item-link" href="' + item.url + '" target="_blank" rel="noopener noreferrer">View on X ↗</a>' +
-        '<button class="show-tweet-btn" type="button">Show tweet ↴</button>';
+        '<a class="item-link" href="' + item.url + '" target="_blank" rel="noopener noreferrer">View on X ↗</a>';
 
       container.appendChild(row);
-      row.querySelector('.show-tweet-btn').addEventListener('click', function (e) {
-        toggleEmbed(e.currentTarget, e.currentTarget.closest('.item'));
-      });
+      if (imgToggle.checked) imgObserver.observe(row);
     }
     state.renderedCount = end;
     loadingRowEl.style.display = (state.renderedCount < list.length) ? 'block' : 'none';
@@ -635,6 +703,7 @@
     state.renderedCount = 0;
     yearCounts = countsByYear(state.filtered);
     noResultsEl.style.display = state.filtered.length === 0 ? 'block' : 'none';
+    initImgObserver();
     renderBatch();
   }
 
@@ -661,6 +730,10 @@
     state.order = state.order === 'asc' ? 'desc' : 'asc';
     orderBtn.textContent = state.order === 'asc' ? 'Oldest first ↑' : 'Newest first ↓';
     applyQuery(searchInput.value);
+  });
+
+  imgToggle.addEventListener('change', function () {
+    resetAndRender();
   });
 
   var io = new IntersectionObserver(function (entries) {
