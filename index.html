@@ -1,0 +1,692 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Liked, in order</title>
+<style>
+  :root {
+    --bg: #121317;
+    --surface: #1b1d23;
+    --line: #2a2d35;
+    --line-soft: #22242b;
+    --text: #ece9e2;
+    --text-muted: #8b8e96;
+    --text-faint: #5b5e66;
+    --amber: #e8a33d;
+    --amber-soft: #6b5330;
+    --amber-bright: #f2c879;
+    --error: #e06a5f;
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body {
+    margin: 0;
+    padding: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Helvetica, Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    min-height: 100vh;
+  }
+
+  ::selection { background: var(--amber-soft); color: var(--text); }
+  a { color: var(--amber); }
+  a:hover { color: var(--amber-bright); }
+
+  .wrap {
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 0 24px 120px;
+  }
+
+  /* ---------- Upload screen ---------- */
+  #upload-screen {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+  }
+
+  .upload-panel { max-width: 520px; width: 100%; text-align: center; }
+
+  h1.title {
+    font-family: Georgia, 'Times New Roman', serif;
+    font-style: italic;
+    font-weight: 500;
+    font-size: clamp(30px, 5vw, 40px);
+    margin: 0 0 10px;
+    letter-spacing: -0.01em;
+  }
+
+  p.subtitle {
+    color: var(--text-muted);
+    font-size: 15px;
+    line-height: 1.6;
+    margin: 0 0 32px;
+  }
+
+  .drop-zone {
+    border: 1.5px dashed var(--line);
+    border-radius: 12px;
+    padding: 40px 24px;
+    cursor: pointer;
+    transition: border-color 0.15s ease, background 0.15s ease;
+    background: var(--surface);
+  }
+  .drop-zone.dragover {
+    border-color: var(--amber);
+    background: #201c14;
+  }
+
+  .drop-zone p { margin: 0 0 16px; color: var(--text-muted); font-size: 14.5px; }
+  .drop-zone code {
+    background: var(--line-soft);
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 13px;
+    color: var(--text);
+  }
+
+  #browse-btn {
+    background: var(--amber);
+    color: #1a1408;
+    border: none;
+    font-weight: 600;
+    font-size: 14.5px;
+    padding: 11px 22px;
+    border-radius: 7px;
+    cursor: pointer;
+    font-family: inherit;
+  }
+  #browse-btn:hover { background: var(--amber-bright); }
+
+  p.privacy-note {
+    margin: 22px 0 0;
+    font-size: 12.5px;
+    color: var(--text-faint);
+    line-height: 1.6;
+  }
+
+  p.howto {
+    margin: 28px 0 0;
+    font-size: 13px;
+    color: var(--text-faint);
+    line-height: 1.6;
+    text-align: left;
+    border-top: 1px solid var(--line-soft);
+    padding-top: 20px;
+  }
+  p.howto strong { color: var(--text-muted); }
+
+  .status-line {
+    margin-top: 20px;
+    font-size: 13.5px;
+    min-height: 20px;
+  }
+  .status-line.error { color: var(--error); }
+  .status-line.loading { color: var(--text-muted); }
+
+  /* ---------- App screen ---------- */
+  #app-screen { display: none; }
+
+  header.top {
+    padding: 44px 0 24px;
+    border-bottom: 1px solid var(--line);
+    position: sticky;
+    top: 0;
+    background: linear-gradient(var(--bg) 82%, transparent);
+    z-index: 5;
+  }
+
+  header.top h1.title { font-size: clamp(26px, 4vw, 34px); margin-bottom: 6px; }
+
+  p.meta {
+    margin: 0 0 20px;
+    color: var(--text-muted);
+    font-size: 14px;
+  }
+  p.meta .n { color: var(--text); font-variant-numeric: tabular-nums; }
+
+  .controls { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+
+  .search-box { flex: 1; min-width: 180px; position: relative; }
+  .search-box svg {
+    position: absolute; left: 13px; top: 50%; transform: translateY(-50%);
+    opacity: 0.45; pointer-events: none;
+  }
+
+  input#search {
+    width: 100%;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    color: var(--text);
+    font-size: 15px;
+    padding: 11px 14px 11px 38px;
+    border-radius: 7px;
+    outline: none;
+    font-family: inherit;
+  }
+  input#search::placeholder { color: var(--text-faint); }
+  input#search:focus { border-color: var(--amber-soft); }
+
+  button.chip-btn {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    color: var(--text-muted);
+    font-size: 13px;
+    padding: 11px 14px;
+    border-radius: 7px;
+    cursor: pointer;
+    white-space: nowrap;
+    font-family: inherit;
+  }
+  button.chip-btn:hover { color: var(--text); border-color: var(--text-faint); }
+
+  p.img-note {
+    margin: 12px 0 0;
+    font-size: 12.5px;
+    color: var(--text-faint);
+    line-height: 1.5;
+  }
+
+  .no-results {
+    padding: 60px 0;
+    text-align: center;
+    color: var(--text-faint);
+    font-size: 15px;
+    display: none;
+  }
+
+  .year-group {
+    display: grid;
+    grid-template-columns: 128px 1fr;
+    gap: 0 28px;
+    border-bottom: 1px solid var(--line-soft);
+    padding: 40px 0;
+  }
+  .year-group:last-child { border-bottom: none; }
+
+  .year-marker {
+    position: sticky;
+    top: 118px;
+    align-self: start;
+    font-family: Georgia, serif;
+    font-weight: 600;
+    font-size: clamp(40px, 6vw, 56px);
+    color: var(--amber);
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .year-count {
+    display: block;
+    font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+    font-size: 12px;
+    font-weight: 400;
+    color: var(--text-faint);
+    margin-top: 6px;
+  }
+
+  .items { border-left: 1px solid var(--line); padding-left: 24px; }
+
+  .item { position: relative; padding: 0 0 26px; }
+  .item:last-child { padding-bottom: 0; }
+
+  .item::before {
+    content: '';
+    position: absolute;
+    left: -29px;
+    top: 7px;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--text-faint);
+  }
+
+  .item-date {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 12px;
+    color: var(--text-faint);
+    letter-spacing: 0.01em;
+    margin-bottom: 6px;
+  }
+
+  .item-text {
+    font-size: 16px;
+    line-height: 1.6;
+    color: var(--text);
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    margin-bottom: 6px;
+  }
+  .item-text a { text-decoration: none; border-bottom: 1px solid var(--amber-soft); }
+  .item-text a:hover { border-color: var(--amber-bright); }
+  .item-text mark { background: var(--amber-soft); color: var(--amber-bright); border-radius: 2px; padding: 0 1px; }
+
+  .item-link { font-size: 13px; color: var(--text-faint); text-decoration: none; margin-right: 14px; }
+  .item-link:hover { color: var(--amber); }
+
+  .show-tweet-btn {
+    font-size: 13px;
+    color: var(--text-faint);
+    background: none;
+    border: none;
+    padding: 0;
+    cursor: pointer;
+    font-family: inherit;
+    text-decoration: underline;
+    text-decoration-color: var(--line);
+    text-underline-offset: 2px;
+  }
+  .show-tweet-btn:hover { color: var(--amber); text-decoration-color: var(--amber); }
+
+  .embed-wrap { margin-top: 12px; max-width: 480px; }
+  .embed-wrap .embed-loading { font-size: 12px; color: var(--text-faint); padding: 10px 0; }
+
+  .loading-row { text-align: center; padding: 30px 0; color: var(--text-faint); font-size: 13px; display: none; }
+
+  #sentinel { height: 1px; }
+
+  @media (max-width: 640px) {
+    .year-group { grid-template-columns: 1fr; gap: 8px 0; }
+    .year-marker { position: static; display: flex; align-items: baseline; gap: 10px; }
+    .items { padding-left: 18px; }
+    header.top { padding: 30px 0 18px; }
+  }
+</style>
+</head>
+<body>
+
+<div id="upload-screen">
+  <div class="upload-panel">
+    <h1 class="title">Liked, in order</h1>
+    <p class="subtitle">See every post you've liked on X, sorted oldest to newest — with search and inline previews.</p>
+
+    <div class="drop-zone" id="drop-zone">
+      <p>Drop your X archive <code>.zip</code> here — or just the <code>like.js</code> file from inside it</p>
+      <input type="file" id="file-input" accept=".zip,.js,.json" hidden>
+      <button id="browse-btn" type="button">Choose a file</button>
+      <div class="status-line" id="status-line"></div>
+    </div>
+
+    <p class="privacy-note">Everything happens in your browser. Your file is never uploaded or sent anywhere — it's read and processed entirely on your device.</p>
+
+    <p class="howto">
+      <strong>Don't have your archive yet?</strong><br>
+      On X: Settings and privacy → Your account → Download an archive of your data → request it, then wait for the email (can take a day or so). Once downloaded, come back and drop the .zip here — or open it and find <code>data/like.js</code> inside.
+    </p>
+  </div>
+</div>
+
+<div id="app-screen">
+  <div class="wrap">
+    <header class="top">
+      <h1 class="title">Liked, in order</h1>
+      <p class="meta">
+        <span class="n" id="stat-count">0</span> likes ·
+        <span class="n" id="stat-range"></span>
+      </p>
+      <div class="controls">
+        <div class="search-box">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#8b8e96" stroke-width="2"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <input id="search" type="text" placeholder="Search your likes…" autocomplete="off">
+        </div>
+        <button id="order-toggle" class="chip-btn" type="button">Oldest first ↑</button>
+        <button id="change-file-btn" class="chip-btn" type="button">Use a different file</button>
+      </div>
+      <p class="img-note">Images aren't included in the export. Click "Show tweet" on any item to load X's own embed with the image inline — needs an internet connection.</p>
+    </header>
+
+    <div id="results"></div>
+    <p class="no-results" id="no-results">Nothing matches that search.</p>
+    <div class="loading-row" id="loading-row">loading more…</div>
+    <div id="sentinel"></div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script>
+(function () {
+  "use strict";
+
+  var uploadScreen = document.getElementById('upload-screen');
+  var appScreen = document.getElementById('app-screen');
+  var dropZone = document.getElementById('drop-zone');
+  var fileInput = document.getElementById('file-input');
+  var browseBtn = document.getElementById('browse-btn');
+  var statusLine = document.getElementById('status-line');
+  var changeFileBtn = document.getElementById('change-file-btn');
+
+  // ---------------- Parsing ----------------
+
+  function snowflakeToMs(idStr) {
+    try {
+      var big = BigInt(idStr);
+      var ms = (big >> 22n) + 1288834974657n;
+      return Number(ms);
+    } catch (e) {
+      return Math.floor(Number(idStr) / 4194304) + 1288834974657;
+    }
+  }
+
+  function extractJsonFromJs(text) {
+    var idx = text.indexOf('[');
+    if (idx === -1) throw new Error("That doesn't look like a like.js file.");
+    return JSON.parse(text.slice(idx));
+  }
+
+  function normalizeLikeArray(arr) {
+    if (!Array.isArray(arr)) throw new Error("Unexpected file format.");
+    var out = [];
+    for (var i = 0; i < arr.length; i++) {
+      var d = arr[i];
+      var like = (d && d.like) ? d.like : d;
+      if (!like || !like.tweetId) continue;
+      out.push({
+        id: String(like.tweetId),
+        text: like.fullText || '',
+        url: like.expandedUrl || ('https://twitter.com/i/web/status/' + like.tweetId),
+        ts: snowflakeToMs(like.tweetId)
+      });
+    }
+    out.sort(function (a, b) { return a.ts - b.ts; });
+    return out;
+  }
+
+  function parseTextFile(name, text) {
+    if (/\.json$/i.test(name)) {
+      return normalizeLikeArray(JSON.parse(text));
+    }
+    return normalizeLikeArray(extractJsonFromJs(text));
+  }
+
+  function parseZipFile(file) {
+    if (typeof JSZip === 'undefined') {
+      return Promise.reject(new Error("Couldn't load the zip reader — check your connection and try again."));
+    }
+    return JSZip.loadAsync(file).then(function (zip) {
+      var candidates = [];
+      zip.forEach(function (relPath, zipEntry) {
+        if (/(^|\/)like(-part\d+)?\.(js|json)$/i.test(relPath) && !zipEntry.dir) {
+          candidates.push(zipEntry);
+        }
+      });
+      if (!candidates.length) {
+        throw new Error("Couldn't find a like.js file inside that zip. Look for data/like.js.");
+      }
+      return Promise.all(candidates.map(function (entry) {
+        return entry.async('text').then(function (text) {
+          return /\.json$/i.test(entry.name) ? JSON.parse(text) : extractJsonFromJs(text);
+        });
+      })).then(function (arrays) {
+        var merged = [];
+        arrays.forEach(function (a) { merged = merged.concat(a); });
+        return normalizeLikeArray(merged);
+      });
+    });
+  }
+
+  function setStatus(msg, kind) {
+    statusLine.textContent = msg || '';
+    statusLine.className = 'status-line' + (kind ? ' ' + kind : '');
+  }
+
+  function handleFile(file) {
+    setStatus('Reading ' + file.name + '…', 'loading');
+    var p;
+    if (/\.zip$/i.test(file.name)) {
+      p = parseZipFile(file);
+    } else {
+      p = file.text().then(function (text) { return parseTextFile(file.name, text); });
+    }
+    p.then(function (items) {
+      if (!items.length) throw new Error("No liked posts found in that file.");
+      setStatus('', '');
+      onDataLoaded(items);
+    }).catch(function (err) {
+      setStatus(err && err.message ? err.message : "Couldn't read that file.", 'error');
+    });
+  }
+
+  browseBtn.addEventListener('click', function () { fileInput.click(); });
+  dropZone.addEventListener('click', function (e) {
+    if (e.target === browseBtn) return;
+    fileInput.click();
+  });
+  fileInput.addEventListener('change', function () {
+    if (fileInput.files && fileInput.files[0]) handleFile(fileInput.files[0]);
+  });
+  ['dragover', 'dragenter'].forEach(function (evt) {
+    dropZone.addEventListener(evt, function (e) {
+      e.preventDefault();
+      dropZone.classList.add('dragover');
+    });
+  });
+  ['dragleave', 'dragend', 'drop'].forEach(function (evt) {
+    dropZone.addEventListener(evt, function (e) {
+      dropZone.classList.remove('dragover');
+    });
+  });
+  dropZone.addEventListener('drop', function (e) {
+    e.preventDefault();
+    var f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+    if (f) handleFile(f);
+  });
+
+  changeFileBtn.addEventListener('click', function () {
+    appScreen.style.display = 'none';
+    uploadScreen.style.display = 'flex';
+    fileInput.value = '';
+    setStatus('', '');
+  });
+
+  // ---------------- App (timeline) ----------------
+
+  var ASC = [];
+  var DESC = [];
+  var state = { order: 'asc', query: '', filtered: [], renderedCount: 0 };
+  var BATCH = 120;
+
+  var resultsEl = document.getElementById('results');
+  var noResultsEl = document.getElementById('no-results');
+  var loadingRowEl = document.getElementById('loading-row');
+  var sentinel = document.getElementById('sentinel');
+  var searchInput = document.getElementById('search');
+  var orderBtn = document.getElementById('order-toggle');
+
+  function escapeHtml(s) {
+    return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+  function linkify(escapedText) {
+    return escapedText.replace(/(https?:\/\/[^\s]+)/g, function (m) {
+      return '<a href="' + m + '" target="_blank" rel="noopener noreferrer">' + m + '</a>';
+    });
+  }
+  function highlight(html, query) {
+    if (!query) return html;
+    try {
+      var re = new RegExp('(' + query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + ')', 'ig');
+      return html.replace(re, '<mark>$1</mark>');
+    } catch (e) { return html; }
+  }
+  function formatDate(ts) {
+    var d = new Date(ts);
+    var datePart = d.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: '2-digit' });
+    var timePart = d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
+    return datePart + ' · ' + timePart;
+  }
+  function yearOf(ts) { return new Date(ts).getFullYear(); }
+
+  var yearCounts = {};
+  var itemsContainerForYear = {};
+
+  function countsByYear(list) {
+    var counts = {};
+    for (var i = 0; i < list.length; i++) {
+      var y = yearOf(list[i].ts);
+      counts[y] = (counts[y] || 0) + 1;
+    }
+    return counts;
+  }
+
+  function ensureYearGroup(year, countInYear) {
+    var group = document.createElement('div');
+    group.className = 'year-group';
+    group.innerHTML =
+      '<div class="year-marker">' + year + '<span class="year-count">' + countInYear + ' liked</span></div>' +
+      '<div class="items"></div>';
+    resultsEl.appendChild(group);
+    return group.querySelector('.items');
+  }
+  function getItemsContainer(year) {
+    if (itemsContainerForYear[year]) return itemsContainerForYear[year];
+    var el = ensureYearGroup(year, yearCounts[year] || 0);
+    itemsContainerForYear[year] = el;
+    return el;
+  }
+
+  // On-demand official X embed (avoids CORS issues with direct API calls)
+  var widgetsScriptLoaded = false;
+  var widgetsScriptLoading = null;
+  function ensureWidgetsScript() {
+    if (widgetsScriptLoaded) return Promise.resolve();
+    if (widgetsScriptLoading) return widgetsScriptLoading;
+    widgetsScriptLoading = new Promise(function (resolve, reject) {
+      var s = document.createElement('script');
+      s.src = 'https://platform.twitter.com/widgets.js';
+      s.async = true;
+      s.charset = 'utf-8';
+      s.onload = function () { widgetsScriptLoaded = true; resolve(); };
+      s.onerror = function () { reject(new Error('failed to load widgets.js')); };
+      document.head.appendChild(s);
+    });
+    return widgetsScriptLoading;
+  }
+  function toggleEmbed(btn, row) {
+    var existing = row.querySelector('.embed-wrap');
+    if (existing) {
+      existing.remove();
+      btn.textContent = 'Show tweet ↴';
+      return;
+    }
+    btn.textContent = 'Hide tweet ↑';
+    var wrap = document.createElement('div');
+    wrap.className = 'embed-wrap';
+    wrap.innerHTML = '<div class="embed-loading">loading tweet…</div>';
+    row.appendChild(wrap);
+
+    var tweetUrl = row.dataset.tweetUrl;
+    ensureWidgetsScript().then(function () {
+      wrap.innerHTML = '';
+      var blockquote = document.createElement('blockquote');
+      blockquote.className = 'twitter-tweet';
+      blockquote.setAttribute('data-dnt', 'true');
+      blockquote.setAttribute('data-theme', 'dark');
+      var a = document.createElement('a');
+      a.href = tweetUrl;
+      blockquote.appendChild(a);
+      wrap.appendChild(blockquote);
+      if (window.twttr && window.twttr.widgets) window.twttr.widgets.load(wrap);
+    }).catch(function () {
+      wrap.innerHTML = '<div class="embed-loading">Couldn\'t load X\'s embed script — check your connection.</div>';
+    });
+  }
+
+  function renderBatch() {
+    var list = state.filtered;
+    var start = state.renderedCount;
+    var end = Math.min(start + BATCH, list.length);
+    if (start >= end) { loadingRowEl.style.display = 'none'; return; }
+    for (var i = start; i < end; i++) {
+      var item = list[i];
+      var year = yearOf(item.ts);
+      var container = getItemsContainer(year);
+
+      var row = document.createElement('div');
+      row.className = 'item';
+      row.dataset.tweetId = item.id;
+      row.dataset.tweetUrl = item.url;
+
+      var escaped = escapeHtml(item.text);
+      var withLinks = linkify(escaped);
+      var withHighlight = highlight(withLinks, state.query);
+
+      row.innerHTML =
+        '<div class="item-date">' + formatDate(item.ts) + '</div>' +
+        '<div class="item-text">' + withHighlight + '</div>' +
+        '<a class="item-link" href="' + item.url + '" target="_blank" rel="noopener noreferrer">View on X ↗</a>' +
+        '<button class="show-tweet-btn" type="button">Show tweet ↴</button>';
+
+      container.appendChild(row);
+      row.querySelector('.show-tweet-btn').addEventListener('click', function (e) {
+        toggleEmbed(e.currentTarget, e.currentTarget.closest('.item'));
+      });
+    }
+    state.renderedCount = end;
+    loadingRowEl.style.display = (state.renderedCount < list.length) ? 'block' : 'none';
+  }
+
+  function resetAndRender() {
+    resultsEl.innerHTML = '';
+    itemsContainerForYear = {};
+    state.renderedCount = 0;
+    yearCounts = countsByYear(state.filtered);
+    noResultsEl.style.display = state.filtered.length === 0 ? 'block' : 'none';
+    renderBatch();
+  }
+
+  function applyQuery(q) {
+    state.query = q.trim();
+    var base = state.order === 'asc' ? ASC : DESC;
+    if (!state.query) {
+      state.filtered = base;
+    } else {
+      var needle = state.query.toLowerCase();
+      state.filtered = base.filter(function (item) { return item.text.toLowerCase().indexOf(needle) !== -1; });
+    }
+    resetAndRender();
+  }
+
+  var searchTimer = null;
+  searchInput.addEventListener('input', function () {
+    clearTimeout(searchTimer);
+    var v = searchInput.value;
+    searchTimer = setTimeout(function () { applyQuery(v); }, 140);
+  });
+
+  orderBtn.addEventListener('click', function () {
+    state.order = state.order === 'asc' ? 'desc' : 'asc';
+    orderBtn.textContent = state.order === 'asc' ? 'Oldest first ↑' : 'Newest first ↓';
+    applyQuery(searchInput.value);
+  });
+
+  var io = new IntersectionObserver(function (entries) {
+    entries.forEach(function (e) { if (e.isIntersecting) renderBatch(); });
+  }, { rootMargin: '600px 0px' });
+  io.observe(sentinel);
+
+  function onDataLoaded(items) {
+    ASC = items;
+    DESC = items.slice().reverse();
+    state.order = 'asc';
+    orderBtn.textContent = 'Oldest first ↑';
+    searchInput.value = '';
+
+    document.getElementById('stat-count').textContent = ASC.length.toLocaleString('en-US');
+    if (ASC.length) {
+      var oldest = new Date(ASC[0].ts).getFullYear();
+      var newest = new Date(ASC[ASC.length - 1].ts).getFullYear();
+      document.getElementById('stat-range').textContent = oldest === newest ? String(oldest) : (oldest + '–' + newest);
+    }
+
+    uploadScreen.style.display = 'none';
+    appScreen.style.display = 'block';
+    applyQuery('');
+  }
+})();
+</script>
+</body>
+</html>
